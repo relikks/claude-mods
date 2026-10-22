@@ -25,25 +25,14 @@ const LABELS: Record<StatusKind, string> = {
   stopped: 'Detenida',
 }
 
+// Mid tones in the spirit of IntelliJ's New UI: readable as text on a dark or a light background.
 const DEFAULT_COLORS: Record<StatusKind, string> = {
-  working: '#2563eb',
-  attention: '#f59e0b',
-  background: '#7c3aed',
-  idle: '#16a34a',
-  error: '#dc2626',
-  stopped: '#6b7280',
-}
-
-/** Black or white text, whichever reads better on a `#rrggbb` background; white for anything else. */
-export function textOn(background: string): string {
-  const hex = background.trim()
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return '#ffffff'
-  const channel = (at: number) => {
-    const c = parseInt(hex.slice(at, at + 2), 16) / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  }
-  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
-  return luminance > 0.4 ? '#111111' : '#ffffff'
+  working: '#4a86f7',
+  attention: '#e08a2e',
+  background: '#9a6ae8',
+  idle: '#4faf6a',
+  error: '#e05561',
+  stopped: '#8c9099',
 }
 
 /**
@@ -69,11 +58,14 @@ export function chevronsSvg(stroke: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l5 5l-5 5"/><path d="M13 7l5 5l-5 5"/></svg>`
 }
 
-/** A faint wash of a `#rrggbb` color (about 12% opacity); undefined for anything else. */
-export function tint(accent: string): string | undefined {
+/** A `#rrggbb` color at `alpha` (two hex digits; `1f` is about 12%); undefined for anything else. */
+export function tint(accent: string, alpha = '1f'): string | undefined {
   const hex = accent.trim()
-  return /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}1f` : undefined
+  return /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${alpha}` : undefined
 }
+
+// The neutral gray of the chevron, as IntelliJ draws its icons.
+const ICON_GRAY = '#8c9099'
 
 /**
  * The state to draw. Whether a turn runs is the engine's own word (`isWorking` of the band), never inferred
@@ -280,27 +272,27 @@ export const register: Register = (on, options) => {
     const name = await read($, title)
     const editing = await read($, isEditing)
     const accent = color(kind)
-    const onAccent = textOn(accent)
     // The desktop draws the icons as SVG (the dot animated); the terminal, which has no Svg, as text.
     const desktop = e.surface === 'desktop' ? $.ui.resolve(e) : null
     const arrow = desktop ? (
-      <desktop.Svg source={chevronsSvg(accent)} alt="»" width={16} height={16} />
+      <desktop.Svg source={chevronsSvg(ICON_GRAY)} alt="»" width={14} height={14} />
     ) : (
-      <Text color={accent} weight="bold">
+      <Text color="inactive" weight="bold">
         »
       </Text>
     )
     const dot = desktop ? (
-      <desktop.Svg source={dotSvg(kind, onAccent)} alt={LABELS[kind]} width={12} height={12} isInteractive />
+      <desktop.Svg source={dotSvg(kind, accent)} alt={LABELS[kind]} width={10} height={10} isInteractive />
     ) : (
-      <Text color={onAccent}>●</Text>
+      <Text color={accent}>●</Text>
     )
     const stopEditing = () => void update($, isEditing, () => false)
     const startEditing = () => void update($, isEditing, () => true)
 
-    // One rounded row, IntelliJ-like: a double chevron in the state's color and the title, bold, filling the
-    // row and wrapping when long; a pencil to edit it shows on hover (always while there is no title); the
-    // state pill with its live dot closes the row. Only the desktop takes a translucent tint.
+    // IntelliJ New UI, quiet: a rounded row with the theme's own hairline border, a gray double chevron, the
+    // title bold and filling the row (wrapping when long; a pencil to edit it on hover, always while there is
+    // no title), and the state as a chip: a faint wash of its color, its text and live dot in that color. The
+    // terminal takes no translucent colors: there the chip is its colored text alone.
     return (
       <Box
         key="band"
@@ -308,8 +300,7 @@ export const register: Register = (on, options) => {
         alignItems="center"
         gap={1}
         borderStyle="round"
-        borderColor={accent}
-        backgroundColor={e.surface === 'desktop' ? tint(accent) : undefined}
+        borderColor="subtle"
         paddingX={1}
       >
         <Box flexShrink={0}>{arrow}</Box>
@@ -346,13 +337,13 @@ export const register: Register = (on, options) => {
           flexDirection="row"
           alignItems="center"
           gap={1}
-          borderStyle="round"
-          borderColor={accent}
-          backgroundColor={accent}
+          borderStyle={desktop ? 'round' : undefined}
+          borderColor={desktop ? tint(accent, '59') : undefined}
+          backgroundColor={desktop ? tint(accent, '24') : undefined}
           paddingX={1}
         >
           {dot}
-          <Text color={onAccent} weight="semibold" size="footnote">
+          <Text color={accent} weight="medium" size="footnote">
             {LABELS[kind]}
           </Text>
         </Box>

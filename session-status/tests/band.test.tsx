@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { askKey, chevronsSvg, dotSvg, ofLoop, shownKind, textOn, tint } from '../hooks/register'
+import { askKey, chevronsSvg, dotSvg, ofLoop, shownKind, tint } from '../hooks/register'
 
 const BAND = {
   plugin: 'session-status',
@@ -25,9 +25,6 @@ test('colors and state rules', () => {
   expect(dotSvg('idle', '#ffffff')).not.toContain('animate')
   expect(chevronsSvg('#2563eb').match(/<path /g)?.length).toBe(2)
 
-  expect(textOn('#f59e0b')).toBe('#111111')
-  expect(textOn('#2563eb')).toBe('#ffffff')
-  expect(textOn('red')).toBe('#ffffff')
   expect(tint('#2563eb')).toBe('#2563eb1f')
   expect(tint('red')).toBe(undefined)
   expect(askKey(undefined, 'Bash', { command: 'ls' })).toBe('main:Bash:{"command":"ls"}')
