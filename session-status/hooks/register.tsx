@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Outcome, StatusKind } from '../types'
 
@@ -157,10 +157,35 @@ async function refreshTitle($: EngineInterface) {
   if (next !== null && next !== (await read($, title))) await update($, title, () => next)
 }
 
+// How long the title field stays open with nothing typed: the band cannot tell a click outside it.
+const EDIT_IDLE_MS = 30_000
+
+// The timer that closes the field when nothing is typed for EDIT_IDLE_MS; a reload drops it with the module.
+let editIdle: Timer | undefined
+
+/** Closes the title field without saving. */
+async function stopEditing($: EngineInterface) {
+  editIdle?.cancel()
+  editIdle = undefined
+  await update($, isEditing, () => false)
+}
+
+/** (Re)starts the countdown that closes the title field. */
+function armEditIdle($: EngineInterface) {
+  editIdle?.cancel()
+  editIdle = $.clock.after(EDIT_IDLE_MS, () => void stopEditing($))
+}
+
+async function startEditing($: EngineInterface) {
+  await update($, isEditing, () => true)
+  armEditIdle($)
+}
+
+/** Enter in the title field: saves a new title; an empty or unchanged one just closes the field. */
 async function saveTitle($: EngineInterface, value: string) {
   const text = value.replace(/\s+/g, ' ').trim()
-  await update($, isEditing, () => false)
-  if (text === '') return
+  await stopEditing($)
+  if (text === '' || text === (await read($, title))) return
   await update($, title, () => text)
   try {
     await $.store.set(`${P}:title:${await $.session.id()}`, text)
@@ -185,6 +210,12 @@ export const register: Register = (on, options) => {
     await refreshTitle($)
     return next(e)
   })
+
+  // Sending a message means the person left the title field: it closes without saving.
+  on('prompt.submit', async ($, e, next) => {
+    if (await read($, isEditing)) await stopEditing($)
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // A new turn of the main conversation (a background task waking it too) forgets how the last one ended,
   // the work it left in flight (its Stop counts again) and the main conversation's asks left over.
@@ -283,12 +314,9 @@ export const register: Register = (on, options) => {
     ) : (
       <Text color={onAccent}>●</Text>
     )
-    const stopEditing = () => void update($, isEditing, () => false)
-    const startEditing = () => void update($, isEditing, () => true)
-
-    // One rounded row: the title, bold, filling the row and wrapping when long (a pencil to edit it shows on
-    // hover, always while there is no title), and the state pill with its live dot fixed at the right end.
-    // Only the desktop takes a translucent tint.
+    // One rounded row: the title, bold, filling the row and wrapping when long (a click on it opens a field:
+    // Enter saves; sending a message or 30 s without typing closes it), and the state pill with its live dot
+    // fixed at the right end. Only the desktop takes a translucent tint.
     return (
       <Box
         key="band"
@@ -302,30 +330,22 @@ export const register: Register = (on, options) => {
       >
         <Box flexGrow={1} flexShrink={1} flexDirection="row" alignItems="center" gap={1}>
           {editing ? (
-            <>
-              <Box flexGrow={1}>
-                <Input
-                  key="title-input"
-                  value={name ?? ''}
-                  placeholder="Título de la sesión"
-                  submitLabel="guardar"
-                  autoFocus
-                  onSubmit={value => void saveTitle($, value)}
-                />
-              </Box>
-              <Button key="title-cancel" role="dismiss" label="✕" onPress={stopEditing} />
-            </>
+            <Box flexGrow={1}>
+              <Input
+                key="title-input"
+                value={name ?? ''}
+                placeholder="Título de la sesión"
+                autoFocus
+                onInput={() => armEditIdle($)}
+                onSubmit={value => void saveTitle($, value)}
+              />
+            </Box>
           ) : (
-            <>
-              <Box flexShrink={1}>
-                <Text size="heading" weight="bold" wrap="wrap" dimColor={name === null}>
-                  {name ?? 'Sin título'}
-                </Text>
-              </Box>
-              <Box flexShrink={0} display={name === null ? 'flex' : 'none'} hover={{ display: 'flex' }}>
-                <Button key="title" plain label="✎" onPress={startEditing} />
-              </Box>
-            </>
+            <Button key="title" plain onPress={() => void startEditing($)}>
+              <Text size="heading" weight="bold" wrap="wrap" dimColor={name === null}>
+                {name ?? 'Sin título (clic para ponerle uno)'}
+              </Text>
+            </Button>
           )}
         </Box>
         <Box

@@ -137,5 +137,10 @@ test('the band follows the engine and the person, not the tool calls', async ($,
   await $.ui.input({ plugin: 'session-status', key: 'title-input', text: '  Mi   sesión larga  ' })
   expect((await ui.find({ type: 'Text', text: /Mi sesi/ }))?.text).toBe('Mi sesión larga')
   expect(sent).toEqual([{ session_id: 'self', title: 'Mi sesión larga' }])
+  // Enter on the same title only closes the field: nothing is sent again.
+  await $.ui.press({ plugin: 'session-status', key: 'title' })
+  await $.ui.input({ plugin: 'session-status', key: 'title-input', text: 'Mi sesión larga' })
+  expect(sent.length).toBe(1)
+  expect(await ui.find({ key: 'title-input' })).toBe(undefined)
   await ui.unmount()
 })
