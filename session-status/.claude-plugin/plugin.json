@@ -1,6 +1,6 @@
 {
   "name": "session-status",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Status band above the prompt (working, needs you, in the background, waiting, error, stopped) with the session title, editable",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -8,37 +8,37 @@
       "type": "string",
       "title": "Color: working",
       "description": "Background while Claude works (hex or color name)",
-      "default": "#4a86f7"
+      "default": "#2563eb"
     },
     "color_attention": {
       "type": "string",
       "title": "Color: needs you",
       "description": "Background while it asks for permission or asks you a question",
-      "default": "#e08a2e"
+      "default": "#f59e0b"
     },
     "color_background": {
       "type": "string",
       "title": "Color: in the background",
       "description": "Background when the turn finished but subagents, workflows or shells keep working and will wake the session",
-      "default": "#9a6ae8"
+      "default": "#7c3aed"
     },
     "color_idle": {
       "type": "string",
       "title": "Color: waiting for you",
       "description": "Background when the turn finished and it waits for your message",
-      "default": "#4faf6a"
+      "default": "#16a34a"
     },
     "color_error": {
       "type": "string",
       "title": "Color: error",
       "description": "Background when the turn ended in an error",
-      "default": "#e05561"
+      "default": "#dc2626"
     },
     "color_stopped": {
       "type": "string",
       "title": "Color: stopped",
       "description": "Background when you interrupted it, or before the first message",
-      "default": "#8c9099"
+      "default": "#6b7280"
     }
   }
 }
