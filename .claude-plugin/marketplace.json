@@ -1,0 +1,13 @@
+{
+  "name": "dsan-mods",
+  "description": "Mods de Claude Code de uso propio",
+  "owner": {
+    "name": "dsan"
+  },
+  "plugins": [
+    {
+      "name": "session-status",
+      "source": "./session-status"
+    }
+  ]
+}
