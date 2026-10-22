@@ -1,12 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Outcome, StatusKind } from '../types'
+import type { Outcome, SessionInfo, StatusKind } from '../types'
 
 const P = 'session-status'
 const outcome = atom({ plugin: 'session-status', key: 'outcome' } as const, 'idle')
 const asks = atom({ plugin: 'session-status', key: 'asks' } as const, [])
 const background = atom({ plugin: 'session-status', key: 'background' } as const, 0)
+const info = atom({ plugin: 'session-status', key: 'info' } as const, { project: null, branch: null })
 const title = atom({ plugin: 'session-status', key: 'title' } as const, null)
 const isEditing = atom({ plugin: 'session-status', key: 'isEditing' } as const, false)
 
@@ -101,6 +102,41 @@ async function settleLoop($: EngineInterface, loop: string | undefined) {
   await dropAsks($, k => !ofLoop(k, loop))
 }
 
+/** The last segment of a path, either separator. */
+export function baseName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean)
+  return parts[parts.length - 1] ?? path
+}
+
+/** The info line: the project and, in a repository, its branch. */
+export function infoLine(i: SessionInfo): string {
+  return [i.project, i.branch].filter((part): part is string => part !== null).join('  ·  ')
+}
+
+/** Runs git in the session's folder; null when it fails (no repo, no git) or times out. */
+async function git($: EngineInterface, args: string[]): Promise<string | null> {
+  try {
+    const run = await $.process.run(['git', ...args], { timeoutMs: 5000 })
+    return run.exitCode === 0 ? run.stdout.trim() : null
+  } catch {
+    return null
+  }
+}
+
+/** Reads the session's project and git branch; a part that cannot be read stays null. */
+async function refreshInfo($: EngineInterface) {
+  let project: string | null = null
+  try {
+    const repo = await $.session.repo()
+    project = baseName(repo?.root ?? (await $.session.cwd()))
+  } catch {
+    // Unknown folder: no project shown.
+  }
+  const branch = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  const next: SessionInfo = { project, branch }
+  await update($, info, () => next)
+}
+
 /** The session's title as the app's sidebar shows it, or null where the app's tools are not reachable. */
 async function appTitle($: EngineInterface): Promise<string | null> {
   try {
@@ -165,6 +201,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await refreshTitle($)
+    await refreshInfo($)
     return next(e)
   })
 
@@ -225,6 +262,7 @@ export const register: Register = (on, options) => {
       const ended: Outcome = e.reason === 'answer' ? 'idle' : e.reason === 'aborted' ? 'stopped' : 'error'
       await update($, outcome, () => ended)
       await refreshTitle($)
+      await refreshInfo($)
     }
     return next(e)
   })
@@ -256,13 +294,14 @@ export const register: Register = (on, options) => {
     const kind = shownKind(e.props.isWorking, await read($, asks), await read($, outcome), await read($, background))
     const name = await read($, title)
     const editing = await read($, isEditing)
+    const details = infoLine(await read($, info))
     const accent = color(kind)
 
-    // One rounded row, IntelliJ-like: a pill with the state and the title (click to edit) filling the rest,
-    // wrapping when long. Only the desktop takes a translucent tint.
+    // A rounded card of two centered rows, IntelliJ-like: the title big and bold on top (click to edit; it
+    // wraps, never cut), then the state pill beside the project and branch. Only the desktop takes a tint.
     return (
       <Box
-        flexDirection="row"
+        flexDirection="column"
         alignItems="center"
         gap={1}
         borderStyle="round"
@@ -270,30 +309,35 @@ export const register: Register = (on, options) => {
         backgroundColor={e.surface === 'desktop' ? tint(accent) : undefined}
         paddingX={1}
       >
-        <Box flexShrink={0} borderStyle="round" borderColor={accent} backgroundColor={accent} paddingX={1}>
-          <Text color={textOn(accent)} weight="semibold" size="footnote">
-            {LABELS[kind]}
-          </Text>
-        </Box>
-        <Box flexGrow={1} flexShrink={1}>
-          {editing ? (
-            <Box flexDirection="row" alignItems="center" gap={1}>
-              <Input
-                key="title-input"
-                value={name ?? ''}
-                placeholder="Título de la sesión"
-                submitLabel="guardar"
-                autoFocus
-                onSubmit={value => void saveTitle($, value)}
-              />
-              <Button key="title-cancel" label="Cancelar" onPress={() => void update($, isEditing, () => false)} />
-            </Box>
-          ) : (
-            <Button key="title" plain onPress={() => void update($, isEditing, () => true)}>
-              <Text size="heading" weight="bold" wrap="wrap">
-                {name ?? 'Sin título (clic para ponerle uno)'}
-              </Text>
-            </Button>
+        {editing ? (
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Input
+              key="title-input"
+              value={name ?? ''}
+              placeholder="Título de la sesión"
+              submitLabel="guardar"
+              autoFocus
+              onSubmit={value => void saveTitle($, value)}
+            />
+            <Button key="title-cancel" label="Cancelar" onPress={() => void update($, isEditing, () => false)} />
+          </Box>
+        ) : (
+          <Button key="title" plain onPress={() => void update($, isEditing, () => true)}>
+            <Text size="title" weight="bold" wrap="wrap">
+              {name ?? 'Sin título (clic para ponerle uno)'}
+            </Text>
+          </Button>
+        )}
+        <Box flexDirection="row" alignItems="center" justifyContent="center" gap={1} flexWrap="wrap">
+          <Box flexShrink={0} borderStyle="round" borderColor={accent} backgroundColor={accent} paddingX={1}>
+            <Text color={textOn(accent)} weight="semibold" size="footnote">
+              {LABELS[kind]}
+            </Text>
+          </Box>
+          {details !== '' && (
+            <Text dimColor size="footnote" wrap="wrap">
+              {details}
+            </Text>
           )}
         </Box>
       </Box>
