@@ -8,6 +8,10 @@
     {
       "name": "session-status",
       "source": "./session-status"
+    },
+    {
+      "name": "darcula",
+      "source": "./darcula"
     }
   ]
 }

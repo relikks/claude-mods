@@ -19,9 +19,26 @@ Los colores se configuran (hex o nombre) con `/plugin configure session-status@d
 
 El título se sincroniza con el de la barra lateral de la app de escritorio. En una terminal se guarda solo para la franja.
 
+## darcula
+
+Aspecto Darcula de JetBrains para la conversación en la app de escritorio: cada mensaje y cada fila de herramienta va en un marco redondeado con los colores de Darcula. La fila que dibuja Claude queda dentro tal cual, con sus botones y su texto. En la terminal no cambia nada.
+
+| Fila | Aspecto |
+|---|---|
+| Tus mensajes | Marco con el azul de acento. |
+| Respuestas de Claude | Borde verde al pasar el ratón. |
+| Herramientas | Borde del color de su tipo: comandos naranja, lecturas azul, ediciones amarillo, búsquedas morado, web verde, MCP oliva. Rojo si falla, gris si se interrumpe, azul de acento mientras corre. |
+| Resultados | Sangrados bajo su llamada, con borde rojo solo si fallan. |
+
+Opciones (`/plugin configure darcula@dsan-mods` en una terminal de Claude Code):
+- `variant`: `classic` (Darcula, por defecto) o `newui` (New UI Dark).
+- `background`: `tint` (fondo teñido, por defecto; se lee con la app en claro u oscuro), `solid` (los paneles oscuros de Darcula; solo con la app en modo oscuro) o `none` (solo bordes).
+
+No puede cambiar el color del texto de Claude ni el fondo de la app, la barra lateral o la caja del prompt. No hace peticiones de red ni ejecuta nada.
+
 ## Instalación
 
-En el prompt de una sesión de Claude Code en terminal:
+En el prompt de una sesión de Claude Code en terminal (cambia `session-status` por `darcula` para el otro):
 
 ```
 /plugin install session-status --marketplace relikks/claude-mods
