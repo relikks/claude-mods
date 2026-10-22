@@ -1,13 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Outcome, SessionInfo, StatusKind } from '../types'
+import type { Outcome, StatusKind } from '../types'
 
 const P = 'session-status'
 const outcome = atom({ plugin: 'session-status', key: 'outcome' } as const, 'idle')
 const asks = atom({ plugin: 'session-status', key: 'asks' } as const, [])
 const background = atom({ plugin: 'session-status', key: 'background' } as const, 0)
-const info = atom({ plugin: 'session-status', key: 'info' } as const, { project: null, branch: null })
 const title = atom({ plugin: 'session-status', key: 'title' } as const, null)
 const isEditing = atom({ plugin: 'session-status', key: 'isEditing' } as const, false)
 
@@ -45,6 +44,24 @@ export function textOn(background: string): string {
   }
   const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
   return luminance > 0.4 ? '#111111' : '#ffffff'
+}
+
+/**
+ * The pill's dot as an SVG in `fill`: an arc that spins while working, a ring that pulses out while it needs the
+ * person, a slow breath in the background, still otherwise. SMIL only: it animates without script.
+ */
+export function dotSvg(kind: StatusKind, fill: string): string {
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">`
+  if (kind === 'working') {
+    return `${open}<circle cx="6" cy="6" r="4.5" fill="none" stroke="${fill}" stroke-opacity="0.3" stroke-width="2"/><path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="${fill}" stroke-width="2" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 6 6" to="360 6 6" dur="0.9s" repeatCount="indefinite"/></path></svg>`
+  }
+  if (kind === 'attention') {
+    return `${open}<circle cx="6" cy="6" r="3" fill="none" stroke="${fill}" stroke-width="1.5"><animate attributeName="r" values="3;5.5" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0" dur="1.2s" repeatCount="indefinite"/></circle><circle cx="6" cy="6" r="3" fill="${fill}"/></svg>`
+  }
+  if (kind === 'background') {
+    return `${open}<circle cx="6" cy="6" r="3.5" fill="${fill}"><animate attributeName="opacity" values="1;0.35;1" dur="2.4s" repeatCount="indefinite"/></circle></svg>`
+  }
+  return `${open}<circle cx="6" cy="6" r="3.5" fill="${fill}"/></svg>`
 }
 
 /** A faint wash of a `#rrggbb` color (about 12% opacity); undefined for anything else. */
@@ -100,41 +117,6 @@ async function settle($: EngineInterface, loop: string | undefined, tool: string
 /** Nothing of `loop` waits on the person any more. */
 async function settleLoop($: EngineInterface, loop: string | undefined) {
   await dropAsks($, k => !ofLoop(k, loop))
-}
-
-/** The last segment of a path, either separator. */
-export function baseName(path: string): string {
-  const parts = path.split(/[\\/]+/).filter(Boolean)
-  return parts[parts.length - 1] ?? path
-}
-
-/** The info line: the project and, in a repository, its branch. */
-export function infoLine(i: SessionInfo): string {
-  return [i.project, i.branch].filter((part): part is string => part !== null).join('  ·  ')
-}
-
-/** Runs git in the session's folder; null when it fails (no repo, no git) or times out. */
-async function git($: EngineInterface, args: string[]): Promise<string | null> {
-  try {
-    const run = await $.process.run(['git', ...args], { timeoutMs: 5000 })
-    return run.exitCode === 0 ? run.stdout.trim() : null
-  } catch {
-    return null
-  }
-}
-
-/** Reads the session's project and git branch; a part that cannot be read stays null. */
-async function refreshInfo($: EngineInterface) {
-  let project: string | null = null
-  try {
-    const repo = await $.session.repo()
-    project = baseName(repo?.root ?? (await $.session.cwd()))
-  } catch {
-    // Unknown folder: no project shown.
-  }
-  const branch = await git($, ['rev-parse', '--abbrev-ref', 'HEAD'])
-  const next: SessionInfo = { project, branch }
-  await update($, info, () => next)
 }
 
 /** The session's title as the app's sidebar shows it, or null where the app's tools are not reachable. */
@@ -201,7 +183,6 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await refreshTitle($)
-    await refreshInfo($)
     return next(e)
   })
 
@@ -262,7 +243,6 @@ export const register: Register = (on, options) => {
       const ended: Outcome = e.reason === 'answer' ? 'idle' : e.reason === 'aborted' ? 'stopped' : 'error'
       await update($, outcome, () => ended)
       await refreshTitle($)
-      await refreshInfo($)
     }
     return next(e)
   })
@@ -294,14 +274,24 @@ export const register: Register = (on, options) => {
     const kind = shownKind(e.props.isWorking, await read($, asks), await read($, outcome), await read($, background))
     const name = await read($, title)
     const editing = await read($, isEditing)
-    const details = infoLine(await read($, info))
     const accent = color(kind)
+    const onAccent = textOn(accent)
+    // The desktop draws the dot animated; the terminal, which has no Svg, a plain one.
+    const dot =
+      e.surface === 'desktop' ? (
+        (() => {
+          const { Svg } = $.ui.resolve(e)
+          return <Svg source={dotSvg(kind, onAccent)} alt={LABELS[kind]} width={12} height={12} isInteractive />
+        })()
+      ) : (
+        <Text color={onAccent}>●</Text>
+      )
 
-    // A rounded card of two centered rows, IntelliJ-like: the title big and bold on top (click to edit; it
-    // wraps, never cut), then the state pill beside the project and branch. Only the desktop takes a tint.
+    // One rounded row, IntelliJ-like: a pill with a live dot and the state, and the title (click to edit; a
+    // pencil shows on hover) filling the rest, wrapping when long. Only the desktop takes a translucent tint.
     return (
       <Box
-        flexDirection="column"
+        flexDirection="row"
         alignItems="center"
         gap={1}
         borderStyle="round"
@@ -309,35 +299,45 @@ export const register: Register = (on, options) => {
         backgroundColor={e.surface === 'desktop' ? tint(accent) : undefined}
         paddingX={1}
       >
-        {editing ? (
-          <Box flexDirection="row" alignItems="center" gap={1}>
-            <Input
-              key="title-input"
-              value={name ?? ''}
-              placeholder="Título de la sesión"
-              submitLabel="guardar"
-              autoFocus
-              onSubmit={value => void saveTitle($, value)}
-            />
-            <Button key="title-cancel" label="Cancelar" onPress={() => void update($, isEditing, () => false)} />
-          </Box>
-        ) : (
-          <Button key="title" plain onPress={() => void update($, isEditing, () => true)}>
-            <Text size="title" weight="bold" wrap="wrap">
-              {name ?? 'Sin título (clic para ponerle uno)'}
-            </Text>
-          </Button>
-        )}
-        <Box flexDirection="row" alignItems="center" justifyContent="center" gap={1} flexWrap="wrap">
-          <Box flexShrink={0} borderStyle="round" borderColor={accent} backgroundColor={accent} paddingX={1}>
-            <Text color={textOn(accent)} weight="semibold" size="footnote">
-              {LABELS[kind]}
-            </Text>
-          </Box>
-          {details !== '' && (
-            <Text dimColor size="footnote" wrap="wrap">
-              {details}
-            </Text>
+        <Box
+          flexShrink={0}
+          flexDirection="row"
+          alignItems="center"
+          gap={1}
+          borderStyle="round"
+          borderColor={accent}
+          backgroundColor={accent}
+          paddingX={1}
+        >
+          {dot}
+          <Text color={onAccent} weight="semibold" size="footnote">
+            {LABELS[kind]}
+          </Text>
+        </Box>
+        <Box flexGrow={1} flexShrink={1}>
+          {editing ? (
+            <Box flexDirection="row" alignItems="center" gap={1}>
+              <Input
+                key="title-input"
+                value={name ?? ''}
+                placeholder="Título de la sesión"
+                submitLabel="guardar"
+                autoFocus
+                onSubmit={value => void saveTitle($, value)}
+              />
+              <Button key="title-cancel" label="Cancelar" onPress={() => void update($, isEditing, () => false)} />
+            </Box>
+          ) : (
+            <Box key="title-row" flexDirection="row" alignItems="center" gap={1}>
+              <Button key="title" plain onPress={() => void update($, isEditing, () => true)}>
+                <Text size="heading" weight="bold" wrap="wrap">
+                  {name ?? 'Sin título (clic para ponerle uno)'}
+                </Text>
+              </Button>
+              <Box flexShrink={0} display="none" hover={{ display: 'flex' }}>
+                <Text dimColor>✎</Text>
+              </Box>
+            </Box>
           )}
         </Box>
       </Box>

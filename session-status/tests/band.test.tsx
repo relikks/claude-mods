@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { askKey, baseName, infoLine, ofLoop, shownKind, textOn, tint } from '../hooks/register'
+import { askKey, dotSvg, ofLoop, shownKind, textOn, tint } from '../hooks/register'
 
 const BAND = {
   plugin: 'session-status',
@@ -18,16 +18,12 @@ const BAND = {
 
 const WORKING = { ...BAND, props: { ...BAND.props, isWorking: true } } as const
 
-test('info line', () => {
-  expect(baseName('C:\\Des\\Productos\\atlas')).toBe('atlas')
-  expect(baseName('/home/u/repo/')).toBe('repo')
-  expect(infoLine({ project: 'atlas', branch: 'develop' })).toBe('atlas  ·  develop')
-  // A folder outside any repository shows the project alone.
-  expect(infoLine({ project: 'notes', branch: null })).toBe('notes')
-  expect(infoLine({ project: null, branch: null })).toBe('')
-})
-
 test('colors and state rules', () => {
+  // The pill dot spins while working, pulses when it needs you, sits still when waiting.
+  expect(dotSvg('working', '#ffffff')).toContain('animateTransform')
+  expect(dotSvg('attention', '#111111')).toContain('attributeName="r"')
+  expect(dotSvg('idle', '#ffffff')).not.toContain('animate')
+
   expect(textOn('#f59e0b')).toBe('#111111')
   expect(textOn('#2563eb')).toBe('#ffffff')
   expect(textOn('red')).toBe('#ffffff')
@@ -53,12 +49,6 @@ test('the band follows the engine and the person, not the tool calls', async ($,
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
   on('session.id', () => ({ value: 'test-session' }))
-  on('session.repo', () => ({ value: { root: 'C:/Des/Productos/atlas', remote: null, internal: false, name: null } }))
-  on('session.cwd', () => ({ value: 'C:/Des/Productos/atlas' }))
-  on('process.run', (_, e) => {
-    const stdout = e.argv.includes('rev-parse') ? 'develop\n' : ' M a.java\n?? b.java\n'
-    return { value: { exitCode: 0, stdout, stderr: '' } }
-  })
   const store = new Map<string, unknown>()
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
   on('store.set', (_, e) => {
@@ -94,9 +84,6 @@ test('the band follows the engine and the person, not the tool calls', async ($,
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Text', text: /Esperando/ }))?.text).toBe('Esperando tu mensaje')
     expect((await ui.find({ type: 'Text', text: /de la app/ }))?.text).toBe('Título de la app')
-    expect((await ui.find({ type: 'Text', text: /develop/ }))?.text).toBe(
-      'atlas  ·  develop',
-    )
     await ui.unmount()
   }
 
