@@ -1,6 +1,6 @@
 {
   "name": "session-status",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Status band above the prompt (working, needs you, in the background, waiting, error, stopped) with the session title, editable",
   "types": "./types/index.d.ts",
   "userConfig": {

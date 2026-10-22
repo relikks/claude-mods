@@ -64,6 +64,11 @@ export function dotSvg(kind: StatusKind, fill: string): string {
   return `${open}<circle cx="6" cy="6" r="3.5" fill="${fill}"/></svg>`
 }
 
+/** A double chevron (») in `stroke`, the title's lead-in. */
+export function chevronsSvg(stroke: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l5 5l-5 5"/><path d="M13 7l5 5l-5 5"/></svg>`
+}
+
 /** A faint wash of a `#rrggbb` color (about 12% opacity); undefined for anything else. */
 export function tint(accent: string): string | undefined {
   const hex = accent.trim()
@@ -276,21 +281,29 @@ export const register: Register = (on, options) => {
     const editing = await read($, isEditing)
     const accent = color(kind)
     const onAccent = textOn(accent)
-    // The desktop draws the dot animated; the terminal, which has no Svg, a plain one.
-    const dot =
-      e.surface === 'desktop' ? (
-        (() => {
-          const { Svg } = $.ui.resolve(e)
-          return <Svg source={dotSvg(kind, onAccent)} alt={LABELS[kind]} width={12} height={12} isInteractive />
-        })()
-      ) : (
-        <Text color={onAccent}>●</Text>
-      )
+    // The desktop draws the icons as SVG (the dot animated); the terminal, which has no Svg, as text.
+    const desktop = e.surface === 'desktop' ? $.ui.resolve(e) : null
+    const arrow = desktop ? (
+      <desktop.Svg source={chevronsSvg(accent)} alt="»" width={16} height={16} />
+    ) : (
+      <Text color={accent} weight="bold">
+        »
+      </Text>
+    )
+    const dot = desktop ? (
+      <desktop.Svg source={dotSvg(kind, onAccent)} alt={LABELS[kind]} width={12} height={12} isInteractive />
+    ) : (
+      <Text color={onAccent}>●</Text>
+    )
+    const stopEditing = () => void update($, isEditing, () => false)
+    const startEditing = () => void update($, isEditing, () => true)
 
-    // One rounded row, IntelliJ-like: a pill with a live dot and the state, and the title (click to edit; a
-    // pencil shows on hover) filling the rest, wrapping when long. Only the desktop takes a translucent tint.
+    // One rounded row, IntelliJ-like: a double chevron in the state's color and the title, bold, filling the
+    // row and wrapping when long; a pencil to edit it shows on hover (always while there is no title); the
+    // state pill with its live dot closes the row. Only the desktop takes a translucent tint.
     return (
       <Box
+        key="band"
         flexDirection="row"
         alignItems="center"
         gap={1}
@@ -299,6 +312,35 @@ export const register: Register = (on, options) => {
         backgroundColor={e.surface === 'desktop' ? tint(accent) : undefined}
         paddingX={1}
       >
+        <Box flexShrink={0}>{arrow}</Box>
+        <Box flexGrow={1} flexShrink={1} flexDirection="row" alignItems="center" gap={1}>
+          {editing ? (
+            <>
+              <Box flexGrow={1}>
+                <Input
+                  key="title-input"
+                  value={name ?? ''}
+                  placeholder="Título de la sesión"
+                  submitLabel="guardar"
+                  autoFocus
+                  onSubmit={value => void saveTitle($, value)}
+                />
+              </Box>
+              <Button key="title-cancel" role="dismiss" label="✕" onPress={stopEditing} />
+            </>
+          ) : (
+            <>
+              <Box flexShrink={1}>
+                <Text size="heading" weight="bold" wrap="wrap" dimColor={name === null}>
+                  {name ?? 'Sin título'}
+                </Text>
+              </Box>
+              <Box flexShrink={0} display={name === null ? 'flex' : 'none'} hover={{ display: 'flex' }}>
+                <Button key="title" plain label="✎" onPress={startEditing} />
+              </Box>
+            </>
+          )}
+        </Box>
         <Box
           flexShrink={0}
           flexDirection="row"
@@ -313,32 +355,6 @@ export const register: Register = (on, options) => {
           <Text color={onAccent} weight="semibold" size="footnote">
             {LABELS[kind]}
           </Text>
-        </Box>
-        <Box flexGrow={1} flexShrink={1}>
-          {editing ? (
-            <Box flexDirection="row" alignItems="center" gap={1}>
-              <Input
-                key="title-input"
-                value={name ?? ''}
-                placeholder="Título de la sesión"
-                submitLabel="guardar"
-                autoFocus
-                onSubmit={value => void saveTitle($, value)}
-              />
-              <Button key="title-cancel" label="Cancelar" onPress={() => void update($, isEditing, () => false)} />
-            </Box>
-          ) : (
-            <Box key="title-row" flexDirection="row" alignItems="center" gap={1}>
-              <Button key="title" plain onPress={() => void update($, isEditing, () => true)}>
-                <Text size="heading" weight="bold" wrap="wrap">
-                  {name ?? 'Sin título (clic para ponerle uno)'}
-                </Text>
-              </Button>
-              <Box flexShrink={0} display="none" hover={{ display: 'flex' }}>
-                <Text dimColor>✎</Text>
-              </Box>
-            </Box>
-          )}
         </Box>
       </Box>
     )
